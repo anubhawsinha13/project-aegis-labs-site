@@ -1,0 +1,285 @@
+---
+title: "Before You Build an Autonomous Coding Agent: What to Think, Plan and Build First"
+date: "2026-03-16"
+description: "Build the verification foundation before writing agent code. Without ground truth for correctness—a unified test-lint-build pipeline the agent can call—your coding agent operates blind with no feedback loop. The correct build order is verification layer, discipline controls, kill"
+tags: ["AI Agents", "Architecture", "Guardrails", "Autonomous Development"]
+featured: true
+hasSimulation: true
+---
+The coding agent is the most exciting component. It is also the wrong place to start.
+
+Every team building autonomous coding agents faces the same temptation: write the prompt, connect the LLM, watch it generate code. The agent feels like the product. The verification infrastructure feels like scaffolding you can add later.
+
+This sequencing error creates a fundamental problem. An agent without a verifier cannot improve. It generates code but has no way to determine if that code is correct. You built a system that produces output without feedback, optimism without validation, iteration without convergence.
+
+The mental model that prevents this mistake has three layers. Layer one is verification foundation—can you programmatically confirm code correctness? Layer two is discipline controls—can you constrain what the agent modifies? Layer three is control plane—can you stop operations when behavior becomes anomalous? Build them in that order. The agent comes last.
+
+![Scrabble tiles spelling 'Deepseek' on a wooden table, emphasizing inquiry and exploration.](https://images.pexels.com/photos/30839684/pexels-photo-30839684.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940)
+*Photo by [Markus Winkler](https://www.pexels.com/@markus-winkler-1430818) on [Pexels](https://www.pexels.com)*
+
+## Top Critical Risks — What Goes Wrong Without Guardrails
+
+Before building anything, understand the failure modes you are designing against. These are the six risks that require guardrails before a pilot can run safely.
+
+| Risk | What happens without a guardrail |
+|------|----------------------------------|
+| **Prompt injection** | Malicious content in repo files (comments, READMEs, config) redirects the agent mid-task via `read_file` / `search_code` results |
+| **Test gaming** | Agent deletes or disables tests, or modifies build scripts, so that `verify()` passes on broken code |
+| **Secret leakage** | Credentials in repo files enter LLM context and surface in the agent's output diff |
+| **Uncontrolled blast radius** | No change budget means a single bad task can touch every file in a repository |
+| **No kill switch** | A bad batch of tasks cannot be stopped mid-flight — you have no stop button |
+| **Correlated LLM failure** | Agent and Judge using the same model family share the same blind spots — the judge approves the exact mistakes the agent makes |
+
+## The Build Order at a Glance
+
+The diagram below shows what to build, in what sequence, and when to introduce the agent. Click any phase to expand its tasks and architecture diagram.
+
+<BuildOrderDiagram />
+
+## The 8-Gate Foundation Stack
+
+Explore what each gate does and which failure modes it prevents. Click a gate or a threat to see the connection.
+
+<GuardrailDemo />
+
+## Defense-in-Depth Architecture
+
+All 8 gates in full detail. Click any gate to expand its specific controls.
+
+<DefenseArchDiagram />
+
+## Why the Agent Requires Ground Truth First
+
+Autonomous coding agents operate through closed-loop execution: generate code, run tests, analyze errors, modify code, re-run tests [1]. This cycle enables rapid iteration and reduces manual debugging. But the cycle breaks immediately if "run tests" returns unreliable results.
+
+Consider what happens without verification ground truth. The agent generates a function. It needs to know: does this function work? You have three options, all inadequate. First, the agent evaluates its own output using the same model that wrote the code. This creates circular reasoning where errors persist because the evaluator shares the writer's blind spots. Second, you deploy the code to staging and wait for integration tests. This introduces latency measured in minutes or hours, destroying the tight feedback loop that makes agents effective. Third, you route every change through human review. This eliminates autonomy entirely and converts your coding agent into an expensive code suggestion tool.
+
+The verification foundation solves this by providing a single programmatic interface the agent calls: submit code, receive definitive correctness signal. This interface must combine build validation, test execution, linting, and security scanning into one atomic operation. The agent does not need to understand what "correctness" means. It needs a tool that returns pass or fail.
+
+## Layer 1: The Verification Foundation as Agent Tool
+
+Build the verifier as the first component. It exposes one method to the agent: verify a code change. The implementation contains four subsystems that run in sequence.
+
+**Build Validation:** Compile or parse the modified code. Syntax errors, import failures, and type mismatches must block the verification immediately. The agent receives structured error messages that specify which file, which line, and which violation triggered the failure. This feedback enables the agent to fix the issue in the next iteration rather than propagating broken code.
+
+**Test Execution:** Run the repository's test suite against the modified code. This requires infrastructure that can execute tests for dozens of repositories in parallel without resource contention. The verifier must distinguish pre-existing failures from failures the agent introduced. Maintain a baseline test result for each repository's main branch. Compare agent-modified results against that baseline to isolate new failures.
+
+**Linter Checks:** Apply repository-specific style rules, complexity metrics, and convention validators. Calculate cyclomatic complexity for modified functions. Flag imports that violate ordering standards. Detect naming patterns that contradict the repository's established conventions. These checks prevent the agent from generating technically correct code that violates team standards.
+
+**Security Scanning:** Search for hardcoded secrets, dangerous API patterns, and prohibited library usage. This scan must complete in seconds, not minutes. Use static analysis tools that identify common vulnerability patterns without requiring full dependency resolution.
+
+```python
+class VerificationFoundation:
+    """Single interface for agent code verification."""
+    
+    def verify_change(self, repo_id: str, diff: CodeDiff) -> VerificationResult:
+        """
+        Atomic verification: build + test + lint + security.
+        Returns structured pass/fail with actionable error details.
+        """
+        # 1. Build validation
+        build_result = self.build_system.compile(repo_id, diff)
+        if not build_result.success:
+            return VerificationResult(
+                passed=False,
+                stage="build",
+                errors=build_result.errors,
+                suggested_fixes=build_result.fixes
+            )
+        
+        # 2. Test execution against baseline
+        baseline = self.test_cache.get_baseline(repo_id)
+        test_result = self.test_runner.execute(repo_id, diff)
+        new_failures = test_result.failures - baseline.failures
+        if new_failures:
+            return VerificationResult(
+                passed=False,
+                stage="test",
+                errors=[f"New failure: {t.name}" for t in new_failures],
+                failure_details=test_result.get_details(new_failures)
+            )
+        
+        # 3. Linter checks
+        lint_result = self.linter.analyze(diff)
+        if lint_result.violations:
+            return VerificationResult(
+                passed=False,
+                stage="lint",
+                errors=lint_result.violations,
+                auto_fixable=lint_result.get_fixable()
+            )
+        
+        # 4. Security scan
+        security_result = self.security_scanner.scan(diff)
+        if security_result.threats:
+            return VerificationResult(
+                passed=False,
+                stage="security",
+                errors=security_result.threats,
+                severity_levels=security_result.severities
+            )
+        
+        return VerificationResult(passed=True)
+```
+
+The verifier becomes the agent's ground truth. When the agent asks "is this code correct?" the verifier answers definitively. This removes ambiguity from the feedback loop and enables the agent to iterate toward working code without human intervention.
+
+The infrastructure requirements are substantial. You need compute capacity to run test suites for multiple repositories simultaneously. You need caching layers that store baseline test results and avoid re-running unchanged tests. You need observability that captures which verifications are taking longest and where the bottlenecks exist. Build this infrastructure before the agent exists. Retrofitting it later means your agent operates without feedback while you construct the foundation it should have had from day one.
+
+![A bustling control room with people working on multiple computer monitors.](https://images.pexels.com/photos/256219/pexels-photo-256219.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940)
+*Photo by [Pixabay](https://www.pexels.com/@pixabay) on [Pexels](https://www.pexels.com)*
+
+
+## Layer 2: Discipline Controls That Define Boundaries
+
+The verification foundation tells the agent if code works. Discipline controls tell the agent what code it is allowed to modify. These constraints operate before the agent writes any code, preventing entire categories of dangerous operations.
+
+**Diff Validator:** Inspect proposed changes for patterns that should never appear in agent-generated code. The validator runs before the agent commits modifications, blocking dangerous operations at decision time rather than after execution.
+
+Test count delta: require that agent changes maintain or increase the number of tests. An agent that deletes tests to make coverage metrics improve is gaming the system. Block changes where test count decreases unless a human explicitly approves the reduction.
+
+Secret scanning: detect hardcoded API keys, passwords, or tokens in agent-generated code. This duplicates the security scan in the verifier but operates as a pre-commit hook. The earlier you catch secrets, the less cleanup required.
+
+Prohibited pattern matching: maintain a deny list of code patterns that should never appear. This includes dangerous API calls, deprecated library usage, and anti-patterns specific to your codebase. An agent attempting to use `eval()` or disable security controls should trigger immediate rejection.
+
+**Change Budget:** Limit the number of files the agent can modify in a single operation. Start with a budget of five files maximum. This constraint forces the agent to decompose large tasks into smaller increments and creates natural checkpoints where human review can occur.
+
+The change budget prevents cascading failures. An agent that can modify unlimited files might propagate an incorrect change across your entire codebase before you detect the problem. A five-file budget means the blast radius of any single agent error remains bounded.
+
+**File Deny List:** Specify files and directories the agent cannot touch. Authentication logic, database migration scripts, infrastructure configuration, and security policy files should be off-limits until you have proven the agent's reliability on lower-risk targets.
+
+Implement the deny list as a repository-specific configuration file that lives in each codebase. This makes the constraints explicit and reviewable. Teams can adjust the deny list as they gain confidence in agent behavior, gradually expanding the scope of autonomous modifications.
+
+**LLM Judge with Model Diversity:** When the agent evaluates its own output, require that the judge uses a different model family than the code generator. An agent built on GPT-4 should have a judge built on Claude or Gemini. This architectural separation prevents shared failure modes where the generator and judge make identical mistakes.
+
+The judge operates after the verifier passes but before the change merges. It evaluates semantic quality: does the code solve the stated problem? Does it follow architectural patterns? Does it introduce unnecessary complexity? The judge provides a qualitative assessment that complements the verifier's binary pass-fail signal.
+
+## Layer 3: The Control Plane Exists on Day One
+
+The kill switch is not a feature you add when problems emerge. It is infrastructure that must exist before the agent makes its first autonomous commit. This requirement feels excessive when you are testing with one repository and manually triggering each agent operation. It becomes essential when you are operating across dozens of repositories with agents running on scheduled triggers.
+
+**Global Shutdown:** A single command that suspends all agent operations across every repository. The shutdown must complete in under sixty seconds. Every second of delay allows additional agent modifications to propagate through your codebase.
+
+Implement global shutdown as a feature flag in your agent orchestration system. When the flag switches to "disabled," all in-flight agent operations complete their current verification cycle but do not commit changes. New agent operations queue until the flag re-enables.
+
+**Selective Containment:** The ability to disable specific agent instances while allowing others to continue operating. An incident affecting agents that modify authentication code should not block agents that update documentation.
+
+Tag each agent instance with a risk category and operation type. Your control plane must support disabling agents by tag. This granularity allows surgical intervention when issues emerge in specific domains without halting all automation.
+
+**Automatic Rollback Procedures:** Pre-defined rollback workflows for each category of agent modification. When an agent changes database schemas, the rollback procedure must include data migration reversal, not just code reversion. When an agent updates API contracts, the rollback procedure must verify that dependent services still function after reverting the change.
+
+Test the rollback procedures through tabletop exercises before you need them in production. Simulate a scenario where an agent introduces a critical bug that affects ten repositories. Execute the rollback procedure and measure how long it takes to restore the previous state. Identify bottlenecks and fix them while the exercise is theoretical rather than a live incident.
+
+The control plane creates accountability. When something goes wrong, you need to answer three questions: which agent made the change, why did it make that decision, and how do we revert the damage? Without instrumentation that captures this information, you cannot answer any of these questions with precision.
+
+## The Correct Build Order in Practice
+
+You have built verification foundation, discipline controls, and control plane. Now build the agent. This inverted sequence feels counterintuitive because the agent is the component that delivers visible value. But the agent's value depends entirely on the infrastructure beneath it.
+
+**Start with one repository.** Do not attempt to build an agent that operates across your entire codebase. Select a single repository with comprehensive test coverage, clear coding standards, and low production criticality. This becomes your proving ground.
+
+**Constrain to one task type.** The agent should perform a single category of modification. Dependency updates are an ideal starting point. The task is well-defined, the verification is straightforward, and the risk is bounded. Do not build a general-purpose agent that handles arbitrary coding tasks. Build a specialist agent that does one thing reliably.
+
+**Require manual triggering.** Do not enable scheduled or automatic agent operations until you have observed at least fifty successful manual runs. Each manual trigger gives you an opportunity to validate that the verification foundation catches errors, the discipline controls prevent inappropriate changes, and the control plane provides the intervention capabilities you need.
+
+**Enforce a five-file change budget.** This limit forces the agent to work incrementally and creates natural review points. After the agent successfully completes fifty modifications under this budget, consider increasing to ten files. Do not remove the budget entirely. Unbounded change scope introduces risks that compound across repositories.
+
+## Mapping the Eight Gates to Pre-Requisites
+
+The original gate model describes controls you add to a running agent. Reframe them as pre-requisites you build before the agent exists.
+
+**Gate 1 (Scope Containment)** becomes your file deny list and repository access controls. Define these policies before the agent can modify any code. The agent should never encounter a repository it is not authorized to touch.
+
+**Gate 2 (Test Integrity)** is embedded in the verification foundation. The verifier enforces test coverage requirements and detects coverage reduction automatically. This is not an optional check you add later—it is core functionality in the ground truth layer.
+
+**Gate 3 (Diff Quality)** maps directly to your discipline controls. The diff validator runs before commit. Complexity metrics, convention checks, and scope alignment happen at decision time, not after the code reaches review.
+
+**Gate 4 (LLM Judge Calibration)** requires building the judge before deploying the agent. Calibrate it against historical code reviews from your repositories. Measure its precision and recall against human decisions. Do not deploy a judge that has not been validated on real examples from your codebase.
+
+**Gate 5 (Behavioral Observability)** is instrumentation in the control plane. Every agent decision generates structured logs that capture reasoning traces, tool selections, and execution flow. This observability exists from the first agent operation, not added retroactively after an incident.
+
+**Gate 6 (Circuit Breakers)** are part of the control plane's selective containment system. Define failure rate thresholds and latency triggers before the agent runs autonomously. When these thresholds breach, containment activates automatically without requiring human intervention.
+
+**Gate 7 (Cross-Repository Impact)** requires dependency mapping infrastructure. Build the dependency graph before enabling multi-repository operations. The agent should never modify shared code without understanding which services depend on it.
+
+**Gate 8 (Kill Switches)** is the global shutdown capability in your control plane. It exists on day one. Test it regularly. Validate that it completes in under sixty seconds. Update the procedures as your agent deployment expands.
+
+## Why Build Order Determines Success
+
+The sequence matters because each layer provides the foundation the next layer requires. You cannot calibrate an LLM judge without a verification foundation that provides ground truth. You cannot implement circuit breakers without observability that detects when failure rates exceed thresholds. You cannot perform automatic rollback without instrumentation that tracks which changes each agent made.
+
+Teams that build the agent first create governance debt. The agent is running in production. It is delivering value. Now you need to add verification infrastructure without disrupting operations. You retrofit observability into a live system. You implement kill switches while agents are making autonomous commits. Each addition carries risk because you are modifying the foundation while the structure above it continues operating.
+
+The inverted sequence eliminates this debt. When you build verification first, the agent has ground truth from its first operation. When you build controls before deployment, the agent never operates outside defined boundaries. When you build the control plane on day one, you have tested shutdown procedures before you need them in anger.
+
+| Build Sequence Comparison | Agent-First (Wrong) | Foundation-First (Correct) |
+|---------------------------|---------------------|---------------------------|
+| **Initial velocity** | High—agent delivers visible results immediately | Moderate—infrastructure work precedes visible output |
+| **Governance debt** | Accumulates with every agent operation; retrofit adds risk | Zero—controls exist before first autonomous commit |
+| **Failure blast radius** | Unbounded until controls added; cascading failures possible | Constrained from day one by change budgets and file deny lists |
+| **Incident response** | Manual, reactive; no pre-built rollback procedures | Automated, proactive; tested rollback procedures exist |
+| **Verification reliability** | Inconsistent; agent evaluates own output until external verifier built | Consistent; ground truth available from first agent iteration |
+| **Observability** | Gaps in decision traces; added reactively after incidents | Complete from first operation; decision rationale captured |
+| **Scaling safety** | Degrades as repositories increase; governance cannot catch up | Maintains as repositories increase; infrastructure scales with load |
+
+The productivity argument for agent-first sequencing is that you want results quickly. This optimization is local and short-term. You accelerate the first two weeks of development and create months of remediation work. The foundation-first approach inverts this trade-off. The first two weeks feel slower because you are building infrastructure instead of watching the agent generate code. Every week after that is faster because you are operating on solid ground instead of retrofitting safety into a live system.
+
+## Starting Small and Expanding Deliberately
+
+The most common failure mode after building the foundation is expanding scope too quickly. You have proven the agent works on dependency updates in one repository. The temptation is to enable it across all repositories immediately or expand to more complex tasks like refactoring.
+
+Resist this temptation. Expand one dimension at a time. Add repositories while keeping the task type constant. Observe how the verification foundation performs under increased load. Validate that the control plane can manage agent operations across ten repositories before attempting one hundred.
+
+After demonstrating reliability across repositories, expand task types. Move from dependency updates to documentation improvements. These changes have lower production impact than code modifications but exercise different verification paths. Documentation does not have tests to run, but it exercises read and edit tooling in real conditions. Use it as a low-risk expansion step before enabling code refactoring tasks.
+
+The pattern is deliberate scope expansion: prove one dimension, stabilize, then grow. Teams that follow this pattern reach scale reliably. Teams that skip it reach scale and then spend months adding guardrails retroactively, under pressure, with production systems in flight.
+
+## Your Pre-Flight Checklist
+
+Every item below should be checked before the first automated agent session. These are not optional enhancements — they are the gates that cannot be safely retrofitted once the agent is operating on real repositories.
+
+Use this as your sign-off checklist before enabling autonomous runs.
+
+### Layer 1 — Verification Foundation
+
+- Build verifier implemented and tested against at least 3 representative repositories
+- Test runner verifier confirms test count before and after; tracks coverage baseline
+- Lint verifier runs on new violations only (not full codebase — that surfaces unrelated noise)
+- All three exposed as a single `verify()` MCP tool the agent can call
+- `verify()` returns a structured pass/fail with the specific failure reason, not just an exit code
+- Verifier tested independently without an agent — you know it returns reliable results
+
+### Layer 2 — Discipline Controls
+
+- `edit_file` tool has a hard-coded deny list: `.env*`, `*.pem`, `.git/hooks/*`, CI/CD config files
+- Change budget set at 5 files maximum for initial sessions (configured, not just documented)
+- `read_file` content sanitizer active — secrets and credentials are masked before entering LLM context
+- Diff validator runs on every proposed change set: secret scan, test count delta, prohibited patterns
+- Prohibited patterns configured: `@Ignore`, `@Disabled`, `.skip()`, `eslint-disable`, build config keys
+- LLM Judge configured and uses a **different model family** from the coding agent
+- Judge returns a structured JSON verdict with confidence score (0–100)
+- Judge confidence below 70 routes to human review queue, not automatic merge
+
+### Layer 3 — Control Plane
+
+- Global kill switch exists and can halt all active sessions in under 60 seconds
+- Per-domain scoped pause available for surgical intervention without stopping everything
+- Circuit breaker configured: auto-pause a domain when judge veto rate exceeds threshold
+- Failed or incomplete sessions go to a dead-letter queue with human notification
+- MR rate limiter active: no more than 5 MRs per repository per hour
+- Audit log threading session IDs through all systems — task, tool calls, LLM I/O, judge verdict, merge result
+- Audit log is immutable and write-only from the agent's perspective
+
+### Pilot Readiness
+
+- One repository selected for the pilot: highest test coverage, most predictable build
+- One task type selected: dependency version updates or equivalent bounded operation
+- Change budget confirmed at 5 files maximum for the first 20 sessions
+- Kill switch tested end-to-end in staging before the pilot begins
+- First 10 sessions: manually reviewed by a human before any MR is approved
+- Success metrics defined and agreed: MR merge rate, judge veto rate, human override rate, build failure rate
+- Rollback procedure documented: what happens if you need to revert 10 MRs at once
+
+---
+
+The checklist is not a compliance exercise. It is a forcing function. If any item is unchecked, you have identified the exact place where your agent will produce its first uncontrollable incident. Fill the gaps before the first run, not after the first incident.

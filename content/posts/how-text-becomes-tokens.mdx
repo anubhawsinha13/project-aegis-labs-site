@@ -1,0 +1,48 @@
+---
+title: "How Text Becomes Tokens"
+date: "2026-03-13"
+description: "LLMs don't see words. They see numbers. Here's a live demo of how your text gets sliced into tokens — and why it changes everything about cost and reasoning."
+tags: ["LLMs", "Tokenization", "Explainer"]
+featured: true
+hasSimulation: true
+---
+
+Every time you send a message to an LLM, the first thing that happens is invisible to you. Your text doesn't arrive as words. It arrives as a sequence of numbers.
+
+This conversion process is called **tokenization**, and understanding it changes how you think about prompts, costs, and why models sometimes behave strangely.
+
+## What is a token?
+
+A token is a chunk of text — but not necessarily a word. It could be a whole word, part of a word, a space, or a punctuation mark. The model's vocabulary is a fixed list of ~50,000 to ~100,000 of these chunks, and every piece of text gets mapped to IDs from that list.
+
+Type anything below and watch your text split into tokens in real time:
+
+<TokenizerDemo />
+
+Notice a few things as you experiment:
+
+- **Common short words** like "the", "a", "is" are usually a single token
+- **Long or rare words** shatter into multiple tokens — "antidisestablishmentarianism" becomes 6+ tokens
+- **Spaces are part of tokens** — " fox" (with a leading space) is one token, not two
+- **Numbers are expensive** — "1,234,567" often becomes 4–5 tokens
+
+## Why this matters for cost
+
+Every major LLM API charges per token. When you say "write a long essay", you're paying for output tokens one at a time. A rare technical term might cost 4× what a common word costs.
+
+This is why prompt engineers care so much about token efficiency. A prompt that says "summarize" costs 1 token. "Please provide a comprehensive summary of" costs 8.
+
+## Why this matters for reasoning
+
+Here's the subtle part: **the model processes one token at a time**, attending to all previous tokens to predict the next one. When a word splits into multiple tokens, the model has to reconstruct meaning across several steps.
+
+This is part of why LLMs sometimes struggle with:
+- Counting characters (each char might be its own token, or not)
+- Reversing strings (the token sequence doesn't reverse cleanly)
+- Simple arithmetic on large numbers (the digits aren't in a single token)
+
+## The token is the unit of thought
+
+The context window — the "memory" of the model — is measured in tokens, not words. When you see "128k context", that's 128,000 tokens, which is roughly 96,000 words or about 200 pages of text.
+
+Understanding tokens is the foundation for understanding everything else about how LLMs work. In the next post, we'll see what the model actually *does* with those token IDs — how it decides which tokens should pay attention to which other tokens.

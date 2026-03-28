@@ -1,0 +1,54 @@
+---
+title: "Why Your LLM Forgets Things"
+date: "2026-03-13"
+description: "LLMs have no persistent memory. Every reply they give is based entirely on what's inside the context window right now — and when it fills up, the oldest things vanish."
+tags: ["LLMs", "Context Window", "Memory", "Explainer"]
+featured: true
+hasSimulation: true
+---
+
+Ask an LLM a question and it answers instantly. Ask a follow-up and it remembers your first question. Ask twenty follow-ups and it still seems to remember everything. So when does it forget?
+
+The answer is precise: **the model forgets the moment a message falls outside the context window**.
+
+## There is no memory — only context
+
+An LLM has no internal state between messages. No database. No notepad. Nothing persists from one token to the next except what's explicitly written in the input.
+
+Every time the model generates a response, it receives one big block of text: the system prompt, then every prior message in the conversation, then your new message. It reads all of that in a single pass and writes its reply.
+
+That block of text is the **context window** — and it has a hard size limit, measured in tokens.
+
+## Watch the context fill up
+
+Drag the slider below to add more messages to a conversation. Watch what happens when the token budget runs out.
+
+<ContextWindowDemo />
+
+When the context overflows, the model doesn't throw an error. It doesn't warn you. It silently drops the oldest messages — and from that point on, it has no idea those messages ever existed.
+
+This is not a bug. It's how transformers work. The attention mechanism requires every token to attend to every other token in the sequence. There is no way to selectively remember some things and forget others — the entire context is either in or out.
+
+## Why this matters in production
+
+Most developers discover this the hard way. A chatbot works perfectly in testing — 10 message conversations stay sharp. Then in production, a power user runs a 2-hour session and suddenly the bot contradicts itself, forgets the user's name, or ignores instructions from the system prompt.
+
+The system prompt is in the context too. If your system prompt is 2,000 tokens and your context limit is 8,192, you only have ~6,000 tokens left for conversation. That's about 30–40 messages before the model starts forgetting what it's supposed to be doing.
+
+## What you can actually do about it
+
+**Summarise periodically.** When the conversation reaches 70% of the context limit, have a separate LLM call summarise the conversation so far into a compact block. Replace the old messages with the summary. The model loses verbatim history but keeps the semantic gist.
+
+**Use RAG for long-term facts.** If users need the model to remember facts across sessions — their preferences, past decisions, documents they shared — store those in a vector database and retrieve them into the context on demand. The model only sees what's relevant to the current question.
+
+**Right-size your system prompt.** Every token in your system prompt is a token taken away from conversation. A 3,000-token system prompt in an 8k-context model leaves you fewer than 25 back-and-forth messages before forgetting starts. Keep system prompts tight.
+
+**Choose your model's context window deliberately.** GPT-4o has 128k tokens. Gemini 1.5 Pro has 1M. Longer context windows delay the problem — but "lost in the middle" research shows models still lose focus on content buried deep in long contexts. A longer window is not the same as better attention.
+
+## The mental model that fixes everything
+
+Stop thinking of the LLM as a person who remembers. Start thinking of it as a **very smart function** that takes a string and returns a string. The string it receives is everything it knows. The string you pass it is entirely under your control.
+
+Once you see it that way, "memory" becomes an engineering problem: what do you put in the string, when do you update it, and what do you leave out? That's the core skill of building production AI systems.
+
+The context window isn't a limitation to work around. It's the interface. Understanding its boundaries is how you design systems that behave predictably at scale.

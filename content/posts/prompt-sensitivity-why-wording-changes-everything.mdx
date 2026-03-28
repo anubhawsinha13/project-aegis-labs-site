@@ -1,0 +1,70 @@
+---
+title: "Why Your Prompt Wording Changes Everything: Prompt Sensitivity in LLMs"
+date: "2026-03-20"
+description: "The same question asked three different ways produces three different responses — not because the model knows different things, but because your phrasing shifts which output patterns the model activates. Try it live."
+tags: ["LLM", "Prompt Engineering", "AI Engineering", "Developer Experience"]
+featured: true
+hasSimulation: true
+---
+Ask an LLM "how does gradient descent work?" three ways — casually, formally, and as an ELI5 — and you get three different responses. Not three versions of the same response. Three fundamentally different outputs: different vocabulary, different structure, different level of detail, different personality.
+
+The model's knowledge did not change between those three prompts. Its training data is identical. What changed is the *probability distribution over output tokens*. Your phrasing is a content-free signal that activates different regions of the model's learned response patterns.
+
+This is not a quirk. It is the core mechanism you must understand to use LLMs effectively.
+
+![Abstract colourful light beams diverging from a single source, symbolising different output paths.](https://images.pexels.com/photos/2693212/pexels-photo-2693212.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940)
+*Photo by [Pixabay](https://www.pexels.com/@pixabay) on [Pexels](https://www.pexels.com)*
+
+## Try It: Same Knowledge, Different Packaging
+
+Pick a topic. Switch between Casual, Formal, and ELI5 framing. Watch how the model's response changes character completely — same information, entirely different packaging. The output types character by character so you can see the style difference unfold.
+
+<PromptSensitivityDemo />
+
+## Why Phrasing Shifts the Output Distribution
+
+LLMs are next-token predictors. Given a sequence of tokens, the model produces a probability distribution over all possible next tokens. The token with the highest probability gets selected (at low temperature) or sampled from (at higher temperature).
+
+When you write "Hey, can you tell me about gradient descent?" — the tokens "Hey," "can," "you," and the conversational framing shift the probability distribution toward patterns the model learned from casual explanations: blog posts, Reddit comments, informal tutorials. The response uses "you," includes analogies, keeps sentences short, and skips caveats.
+
+When you write "Please provide a comprehensive technical analysis of gradient descent" — the tokens "comprehensive," "technical," "analysis" activate patterns learned from academic papers, documentation, and technical references. The response uses headers, includes mathematical notation, lists trade-offs, and adds caveats.
+
+The same underlying knowledge. The same model weights. Different activation patterns based on the statistical correlations between your prompt tokens and the model's training distribution.
+
+## The Practical Consequence
+
+This sensitivity means your prompt is doing two jobs simultaneously. It describes **what** you want to know. And it signals **how** you want the answer formatted, what level of detail you expect, and what audience the response should be written for. Most developers only think about the first job.
+
+Consider these two prompts for code review:
+- "Check this code for bugs"
+- "Perform a security-focused code review of this function, listing each finding as a numbered item with severity level (critical/high/medium/low) and a one-line remediation"
+
+The first prompt will produce a general paragraph mentioning a few issues. The second will produce a structured list with severity tags — not because the model found different bugs, but because the prompt format constrained the output format.
+
+## When Sensitivity Becomes a Problem
+
+Prompt sensitivity is useful when you control it deliberately. It becomes a problem in three situations:
+
+**Inconsistent results across team members.** If five engineers write five different prompts for the same task, they get five different response formats. In a pipeline where LLM outputs feed into downstream parsers, this variance breaks things.
+
+**Brittle production prompts.** A prompt that works perfectly in testing may fail when the input data slightly changes the token distribution. Adding a single adjective to a classification prompt can shift the model's label from "Negative" to "Mixed."
+
+**Accidental tone mismatch.** A customer support bot with a casually-worded system prompt will produce casual responses even to formal customer complaints. The prompt tone leaks into the output tone.
+
+## How to Control It
+
+**Use few-shot examples** to constrain output format. The model is far more sensitive to demonstrated examples than to written instructions about format. Three examples of input-output pairs will lock the format more reliably than a paragraph describing the desired format.
+
+**Be explicit about audience and format** in every production prompt. Don't assume the model will infer that you want JSON, or that you want a list, or that you want a one-paragraph summary. State it.
+
+**Test prompt variants systematically.** Before deploying a prompt in production, run it with 3-5 phrasing variants against the same inputs. If the outputs differ meaningfully, your prompt is underspecified and will be fragile in production.
+
+**Fix the system prompt, not the user prompt.** In multi-turn applications, encode your format requirements and tone in the system prompt so that user prompt variation does not change the output character.
+
+---
+
+## References
+
+- [OpenAI Prompt Engineering Guide](https://platform.openai.com/docs/guides/prompt-engineering): Best practices for controlling output through prompt design.
+- [Anthropic Prompt Engineering Guide](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering): Claude-specific guidance on format control and sensitivity.
+- [Temperature Settings in LLMs](/blog/temperature-settings-in-llms-the-hidden-parameter-that-defines-your-ais-personality/): How temperature interacts with prompt sensitivity to control output variance.

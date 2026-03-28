@@ -1,0 +1,64 @@
+---
+title: "Few-Shot vs Zero-Shot: How Examples in Your Prompt Change the Model's Behaviour"
+date: "2026-03-20"
+description: "Add zero examples and the model rambles in free text. Add one and it snaps to format. Add three and the output is nearly deterministic. Examples teach format, not knowledge. Try it live."
+tags: ["LLM", "Prompt Engineering", "AI Engineering", "Developer Experience"]
+featured: true
+hasSimulation: true
+---
+The most reliable way to control an LLM's output format is not to describe what you want. It is to show it.
+
+Add zero examples to your prompt and ask the model to classify sentiment — it will write a paragraph explaining its reasoning, use whatever label vocabulary it feels like, and format the output differently every time. Add one example — a single input-output pair — and the model snaps to the demonstrated format. Add three and the output is nearly deterministic: same label vocabulary, same structure, same level of detail, every time.
+
+This is few-shot prompting, and it is the most practical technique in production LLM engineering.
+
+![Rows of identical objects with one variant, representing pattern learning from examples.](https://images.pexels.com/photos/3825527/pexels-photo-3825527.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940)
+*Photo by [Pixabay](https://www.pexels.com/@pixabay) on [Pexels](https://www.pexels.com)*
+
+## Try It: Add Examples and Watch the Output Snap
+
+Select a task. Start at zero examples and read the model's response. Then add one example, two, three — and watch the output transform from rambling free text into a precise, structured response that matches the demonstrated pattern exactly.
+
+<FewShotDemo />
+
+## What Few-Shot Actually Does
+
+The model already knows about sentiment analysis. It already knows how to write JSON. It already knows SQL syntax. The examples do not teach the model new information. They constrain which of the model's many possible output patterns it activates.
+
+Zero-shot means the model has to guess everything: format, label vocabulary, level of detail, whether to include reasoning, whether to output structured data or prose. It makes reasonable guesses, but they are guesses — and they vary across runs.
+
+One-shot gives the model a single template to match. It learns: "output a single word, not a paragraph." It learns: "use JSON, not prose." It learns: "the labels are Positive, Negative, Neutral." One example is often enough to snap the format.
+
+Three-shot makes the pattern robust. The model has seen enough variation in the examples to generalise the format rule rather than overfit to a single example. It knows the label vocabulary is not limited to the one label it saw in one-shot. It knows the JSON schema is consistent across inputs.
+
+## When to Use Each
+
+**Zero-shot** is appropriate for exploratory work, brainstorming, and tasks where you genuinely want the model to choose its own format. It is not appropriate for production pipelines where downstream code parses the output.
+
+**One-shot** is the minimum for format control. Use it when you need the model to output a specific structure (JSON, a single label, a specific template) and the structure is simple enough to demonstrate in one example.
+
+**Three-shot** is the production standard for structured extraction, classification, and format-sensitive tasks. Three examples establish the pattern reliably enough that the output is consistent across thousands of inputs.
+
+**More than five shots** has diminishing returns for format control. If you need more than five examples, the issue is likely task complexity rather than format specification — consider fine-tuning instead.
+
+## The Common Mistake
+
+The most common mistake is writing elaborate instructions about the desired output format instead of showing an example. A paragraph that says "Output a JSON object with keys name, age, company, and role, where name is a string, age is an integer..." is less effective than a single input-output pair demonstrating the exact JSON structure.
+
+Instructions describe. Examples demonstrate. The model is better at pattern matching than instruction following.
+
+## Few-Shot in Production Pipelines
+
+In production, few-shot examples should be:
+
+- **Version-controlled** alongside your prompts. When you change the output format, update the examples.
+- **Representative** of the actual input distribution. If your inputs include edge cases (empty fields, unusual formatting), include at least one example that demonstrates how to handle them.
+- **Minimal.** Each example should demonstrate one format aspect. Do not overload examples with unusual content that distracts from the format pattern.
+
+---
+
+## References
+
+- [OpenAI Prompt Engineering — Few-Shot](https://platform.openai.com/docs/guides/prompt-engineering): Guidance on constructing effective few-shot prompts.
+- [Anthropic — Give Claude Examples](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/use-examples): Claude-specific best practices for example-based prompting.
+- [Prompt Sensitivity](/blog/prompt-sensitivity-why-wording-changes-everything/): How phrasing changes shift the output distribution beyond format control.

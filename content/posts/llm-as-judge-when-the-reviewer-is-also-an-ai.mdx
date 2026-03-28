@@ -1,0 +1,86 @@
+---
+title: "LLM-as-Judge: When the Code Reviewer Is Also an AI"
+date: "2025-03-16"
+description: "Paste agent-generated code and watch a second LLM review it for security vulnerabilities, leaked secrets, and correctness — then deliver a verdict: approve, request changes, or reject."
+tags: ["ai", "llm", "code-review", "guardrails", "llm-judge"]
+hasSimulation: true
+readingTime: "6 min read"
+---
+
+An autonomous coding agent generates a diff. It looks reasonable. The variable names make sense, the logic flows, and it compiles. But buried on line 3 is a SQL injection vulnerability. On line 5, a live API key.
+
+The agent that wrote the code won't catch these — it optimised for "complete the task," not "audit the result." This is why production agent systems use a second model as a **judge**: a separate LLM whose only job is to review the first model's output.
+
+## The Problem with Self-Review
+
+Asking the same model to generate code and then review it creates a bias loop. The model that chose to interpolate user input into SQL is the same model you are asking "is this safe?" It has already committed, probabilistically, to this approach. Self-review catches syntax errors but consistently misses the deeper architectural and security flaws.
+
+Human code review exists for the same reason: the author's mental model of the code is optimistic. A fresh pair of eyes sees what the author assumed was fine.
+
+## Try It: Agent Generates, Judge Reviews
+
+Select a code scenario below. Read the agent's generated diff, then click "Run LLM-as-Judge Review" to see the judge model analyse it finding by finding.
+
+<LLMJudgeDemo />
+
+## How LLM-as-Judge Works
+
+The judge model receives:
+
+1. **The original task description** — what the agent was asked to do
+2. **The generated diff** — the code changes the agent produced
+3. **A review-focused system prompt** — instructions to check for security, correctness, style, and adherence to project conventions
+
+The judge has a different optimisation target than the generator: **find problems**, not **complete the task**. Its system prompt emphasises suspicion, edge cases, and security thinking.
+
+```
+Generator system prompt: "You are a senior developer. Implement the requested feature."
+Judge system prompt:     "You are a security-focused code reviewer. Find vulnerabilities, 
+                          leaked secrets, logic errors, and style violations. Be thorough. 
+                          Assume adversarial input."
+```
+
+## The Judge's Verdict
+
+The judge returns a structured review with:
+
+- **Findings**: Each issue with severity (critical/high/medium/low), category, affected lines, and a description
+- **Verdict**: `approve`, `request_changes`, or `reject`
+- **Summary**: A concise explanation of the decision
+
+When the verdict is `reject` or `request_changes`, the agent receives the findings and generates a new diff. This creates an iterative loop:
+
+```
+Agent generates → Judge reviews → Reject → Agent regenerates → Judge reviews → Approve → Commit
+```
+
+## What the Judge Catches
+
+In practice, LLM-as-Judge catches categories of issues that automated linters miss:
+
+- **Semantic security flaws**: SQL injection, command injection, SSRF — patterns that require understanding intent, not just syntax
+- **Leaked secrets**: API keys, credentials, internal URLs that the agent copied from context
+- **Logic errors**: Off-by-one errors, missing edge cases, incorrect error handling that pass type checks but fail at runtime
+- **Architectural violations**: Using a database directly from a route handler when the project uses a repository pattern
+- **Over-fetching**: `SELECT *` when only specific columns are needed, returning sensitive data through API endpoints
+
+## Limitations
+
+LLM-as-Judge is powerful but not infallible:
+
+- **False positives**: The judge may flag correct code as problematic, especially with unfamiliar patterns
+- **Adversarial bypass**: A sufficiently sophisticated agent could learn to write code that passes judge review while containing subtle vulnerabilities
+- **Cost**: Every diff review is an additional LLM call, adding latency and expense
+- **Consistency**: The same diff reviewed twice may get different findings — LLM review is probabilistic
+
+This is why LLM-as-Judge is one layer in a multi-gate system, not the only gate. It works alongside static analysis, test execution, and human review for high-risk changes.
+
+## Key Takeaways
+
+- A second LLM reviewing the first model's code catches security and logic flaws that self-review misses
+- The judge has a different system prompt optimised for finding problems, not completing tasks
+- Structured output (severity, category, verdict) enables automated CI/CD integration
+- The generate-review-iterate loop improves code quality before any human sees the diff
+- LLM-as-Judge is one layer in defence-in-depth, not a replacement for static analysis or human review
+
+The best code review happens before the PR is opened. LLM-as-Judge makes that possible at machine speed.

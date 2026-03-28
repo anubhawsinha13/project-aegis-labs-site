@@ -1,0 +1,70 @@
+---
+title: "Tokens vs Words: What LLMs Actually See When You Type"
+date: "2025-03-16"
+description: "Type any text and watch it get tokenised in real time. See why 'hello' is one token but 'cryptocurrency' is three, and why this matters for cost, context, and model behaviour."
+tags: ["ai", "llm", "tokens", "tokenisation"]
+hasSimulation: true
+readingTime: "5 min read"
+---
+
+When you type "Hello, world!" into ChatGPT, the model doesn't see three words. It sees a sequence of **tokens** — subword chunks that are the true atomic units of every LLM. Understanding tokens changes how you think about prompts, costs, context limits, and model behaviour.
+
+## What Is a Token?
+
+A token is a piece of text that the model treats as a single unit. Tokens are created by a **tokeniser** — an algorithm (typically Byte Pair Encoding, or BPE) that splits text into chunks based on frequency patterns learned from the training data.
+
+Common words stay whole. Rare words, technical jargon, code identifiers, and non-English text get split into smaller pieces:
+
+- `hello` → 1 token
+- `indistinguishable` → 4 tokens
+- `🚀` → 1-3 tokens (depends on the tokeniser)
+- `cryptocurrency` → 3 tokens (`crypt`, `ocur`, `rency`)
+
+## Try It: Live Tokenisation
+
+Type anything below — English, code, emoji, other languages — and watch it split into tokens in real time.
+
+<TokensDemo />
+
+## Why Tokens Matter
+
+**Billing**: OpenAI, Anthropic, and other providers charge per token — both input and output. A verbose prompt with 1,000 tokens costs more than a concise 200-token prompt that asks the same question.
+
+**Context window**: The context window limit is measured in tokens, not words. A 128K-token window holds roughly 96,000 English words — but far fewer tokens of code, because code identifiers are often split into multiple tokens.
+
+**Model "vision"**: The model processes each token independently in its attention mechanism. If a word is split across three tokens, the model must infer the full word from its parts. This is why models are worse at spelling, character-level tasks, and rare words — they literally see them in pieces.
+
+**Non-English penalty**: English text averages roughly 1.3 tokens per word. Chinese, Japanese, Korean, and other scripts can average 2-3 tokens per character, making non-English usage significantly more expensive and context-hungry.
+
+## The Token-to-Word Ratio
+
+A rough rule of thumb for English text:
+
+- **1 token ≈ 0.75 words** (or equivalently, 1 word ≈ 1.33 tokens)
+- **100 tokens ≈ 75 words**
+- **1,000 tokens ≈ 750 words** (roughly one full page of text)
+
+But this ratio varies dramatically:
+
+- Short common words (`the`, `is`, `a`) → 1 token each
+- Long technical terms → 2-5 tokens each
+- Code with camelCase → each sub-word often becomes a token
+- Whitespace and punctuation → separate tokens
+
+## Practical Implications
+
+**Prompt optimization**: Shorter, clearer prompts reduce cost and leave more room in the context window for the model's response. "Summarise in 3 sentences" is cheaper and more effective than a paragraph of instructions.
+
+**Code is expensive**: A 500-line code file might use 3,000+ tokens because every variable name, bracket, and keyword is tokenised separately. This is why code-heavy conversations hit context limits faster than prose.
+
+**Emoji and special characters**: A single emoji can cost 2-3 tokens. In high-volume applications, this adds up.
+
+## Key Takeaways
+
+- LLMs see tokens, not words — tokens are subword chunks created by BPE or similar algorithms
+- Common words are single tokens; rare words, code, and non-English text are split into multiple tokens
+- You are billed per token, context windows are measured in tokens, and model attention operates over tokens
+- English averages roughly 1.3 tokens per word; code and non-English text can be much higher
+- Understanding tokenisation helps you write more efficient prompts and manage context budgets
+
+The next time a model produces a surprising response, consider what it actually saw: not your words, but the tokens your words became.

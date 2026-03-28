@@ -1,0 +1,84 @@
+---
+title: "RAG vs Pure LLM: When the Model Needs Your Data"
+date: "2025-03-16"
+description: "Ask the same question with and without retrieval augmentation. Watch the pure LLM guess while RAG cites your actual documents — company policies, codebase bugs, and yesterday's board meeting."
+tags: ["ai", "llm", "rag", "retrieval-augmented-generation"]
+hasSimulation: true
+readingTime: "7 min read"
+---
+
+An LLM trained on the internet can explain REST APIs, debug Python code, and write SQL queries. But ask it about your company's remote work policy, your codebase's payment bug, or yesterday's board meeting — and it has nothing. It was never trained on your data.
+
+**Retrieval-Augmented Generation (RAG)** bridges this gap by fetching relevant documents from your knowledge base and injecting them into the model's context window. The model's reasoning ability stays the same. The difference is what it reasons over.
+
+## The Problem: Knowledge Boundaries
+
+Every LLM has a **knowledge cutoff** — a date after which it has no information. More importantly, it has never seen:
+
+- Your company's internal documentation
+- Your codebase and its bug history
+- Your Slack conversations and meeting notes
+- Your customer data and support tickets
+
+When asked about these, the model does one of two things: **admits ignorance** (good) or **hallucinates a plausible-sounding answer** (dangerous).
+
+## Try It: Pure LLM vs RAG
+
+The demo below asks the same question in two modes. In **Pure LLM** mode, the model answers from its training data only. In **RAG** mode, relevant internal documents are retrieved and injected into the context before the model responds.
+
+<RAGDemo />
+
+## How RAG Works
+
+The RAG pipeline has four stages:
+
+**1. Index** — Your documents (code, wiki pages, PDFs, Slack messages) are split into chunks and converted into vector embeddings using an embedding model. These vectors are stored in a vector database.
+
+**2. Query** — When the user asks a question, the question is also converted into a vector embedding using the same model.
+
+**3. Retrieve** — The vector database finds the document chunks whose embeddings are most similar to the question embedding. Typically the top 3-10 chunks are retrieved.
+
+**4. Generate** — The retrieved chunks are injected into the LLM's context window alongside the user's question. The model generates a response grounded in the retrieved documents.
+
+```
+User question → Embed → Vector search → Top-K chunks → [System + Chunks + Question] → LLM → Grounded answer
+```
+
+## When RAG Wins
+
+RAG excels in scenarios where the answer depends on **specific, private, or recent information**:
+
+- **Internal knowledge bases**: Company policies, product documentation, engineering runbooks
+- **Codebases**: "Why does this function fail?" answered with actual stack traces and commit history
+- **Time-sensitive data**: Financial reports, meeting minutes, recent announcements
+- **Customer context**: Support history, account details, previous interactions
+
+## When RAG Isn't Enough
+
+RAG is not a silver bullet:
+
+- **Retrieval quality matters**: If the vector search returns irrelevant chunks, the model generates a grounded-but-wrong answer. Garbage in, garbage out.
+- **Chunk size trade-offs**: Too small and you lose context. Too large and you waste tokens on irrelevant content.
+- **Stale indexes**: If your documents change and the index isn't updated, RAG returns outdated information.
+- **Multi-hop reasoning**: Questions that require synthesising information across many documents can exceed the context window even with RAG.
+
+## RAG vs Fine-Tuning
+
+RAG and fine-tuning solve different problems:
+
+**RAG** gives the model access to **specific facts** at query time. It doesn't change the model — it changes the input.
+
+**Fine-tuning** changes the model's **behaviour and style**. It adjusts weights to make the model respond in a particular way (e.g., always use your company's tone, follow a specific output format).
+
+For most enterprise use cases, RAG is the right starting point. Fine-tuning is reserved for behavioural changes that RAG can't achieve through context alone.
+
+## Key Takeaways
+
+- LLMs can only answer from training data — they have never seen your internal documents
+- RAG retrieves relevant documents and injects them into the context window at query time
+- The model's reasoning is unchanged — RAG changes what it reasons over
+- Retrieval quality is the bottleneck: bad retrieval produces confident but wrong answers
+- RAG is complementary to fine-tuning: RAG provides facts, fine-tuning adjusts behaviour
+- For enterprise applications, RAG is typically the first and most impactful augmentation
+
+The model already knows how to reason. RAG gives it something worth reasoning about.

@@ -1,0 +1,72 @@
+---
+title: "Hallucination Live: What Happens When You Ask an LLM What It Doesn't Know"
+date: "2026-03-20"
+description: "Ask about Python sorting and every claim is verifiable. Ask about an obscure library version and the model fabricates names, features, and citations with the same confidence. Try both and spot the difference."
+tags: ["LLM", "AI Safety", "AI Engineering", "Developer Experience"]
+featured: true
+hasSimulation: true
+---
+Ask an LLM "how does Python's built-in sort work?" and you get a correct, verifiable answer — Tim Peters, 2002, Timsort, O(n log n). Every claim checks out.
+
+Ask it to summarise a research paper that does not exist — with a plausible title, plausible authors, a plausible venue — and you get an equally confident, equally detailed, equally structured response. Except none of it is real. The model fabricated a paper summary that sounds indistinguishable from a real one.
+
+The confidence is identical in both cases. The formatting is identical. The level of detail is identical. The only difference is that one response is grounded in training data and the other is a statistically plausible fiction.
+
+This is hallucination. And the only way to build intuition for it is to see it happen.
+
+![A prism splitting white light into a spectrum, representing how the same process can produce truth or fabrication.](https://images.pexels.com/photos/5473298/pexels-photo-5473298.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940)
+*Photo by [Jill Burrow](https://www.pexels.com/@jill-burrow) on [Pexels](https://www.pexels.com)*
+
+## Try It: Grounded vs Hallucinated
+
+Select a query. Watch the model respond. Then click "Analyse This Response" to see a claim-by-claim breakdown of what is verifiable and what may be fabricated.
+
+<HallucinationDemo />
+
+## Why LLMs Hallucinate
+
+LLMs are not knowledge databases. They are statistical pattern matchers that predict the most probable next token given a sequence. When the sequence describes a well-documented topic (Python sorting, historical events with extensive coverage), the highest-probability tokens align with factual information because the training data is dense with correct answers.
+
+When the sequence describes something obscure — a specific library version, a named research paper, an exact quote from a recent event — the training data is sparse. The model does not have a "I don't know" mechanism built into its probability distribution. Instead, it fills the gap with the most statistically probable continuation, which is a *plausible-sounding* response constructed from patterns learned from similar-looking content.
+
+A question about "FastQL 3.2" activates patterns the model learned from documentation about real GraphQL libraries (Apollo, Relay, graphql-python). It assembles a response from those patterns — async architecture, schema stitching, DataLoader batching — because those are the highest-probability tokens in the context of a GraphQL library description. The result reads exactly like real documentation for a library that does not exist.
+
+## The Hallucination Trigger Categories
+
+**Specific version numbers.** Asking about "library X version Y.Z" when the model may not have seen that specific version's documentation. The model will describe features that sound plausible for that library's general direction.
+
+**Named individuals.** Asking who created or said something. The model may fabricate biographical details with high confidence: "Created by Elena Marchetti at PyCon 2023" sounds exactly like a real attribution.
+
+**Recent events.** Asking for specific details about events after or near the model's training cutoff. The model may get the broad facts right but fabricate exact quotes, specific dates, and precise sequences.
+
+**Academic citations.** Asking for or about specific papers. The model can generate convincing paper summaries with plausible titles, authors, findings, and publication venues — all fabricated.
+
+**Exact quotes.** Asking what someone "said exactly" at an event. The model will reconstruct a plausible quote from its general knowledge of that person's public statements rather than recalling a specific transcript.
+
+## How to Detect It
+
+**Verify proper nouns.** Names, dates, version numbers, publication venues, and specific claims are the highest-risk elements. If a response includes a specific citation, check it exists before trusting the content.
+
+**Watch for excessive detail on niche topics.** When the model provides highly specific details about an obscure topic without hedging, this is a hallucination signal. Genuine uncertainty about sparse-data topics should produce hedged language.
+
+**Ask the model to cite its sources.** This does not prevent hallucination — the model can fabricate URLs as easily as it fabricates facts — but it does make verification easier because you can check whether the cited source actually exists.
+
+**Compare across models.** If two different model families give the same specific fact, it is more likely grounded. If they give different specific details for the same claim, at least one is hallucinating.
+
+## How to Reduce It
+
+**Temperature 0.0** reduces hallucination by always selecting the highest-probability token, which is more likely to be grounded. It does not eliminate hallucination — the highest-probability continuation can still be a plausible fabrication.
+
+**Retrieval-augmented generation (RAG)** grounds the model's response in actual retrieved documents. Instead of relying on what the model "remembers" from training, you provide the relevant content in the prompt and instruct the model to answer only from the provided context.
+
+**Structured prompting** that explicitly includes "If you are not confident in the answer, say 'I don't have reliable information about this'" gives the model an output path for uncertainty. Without this instruction, the model has no high-probability template for expressing ignorance.
+
+**Domain-specific verification** — running the model's output through a deterministic checker (Does this library exist on PyPI? Does this paper exist in Semantic Scholar? Does this person exist on LinkedIn?) — catches fabrications that human reviewers might miss because the content sounds so plausible.
+
+---
+
+## References
+
+- [OpenAI — Reducing Hallucinations](https://platform.openai.com/docs/guides/prompt-engineering): Prompt strategies for grounding model outputs.
+- [Anthropic — Reducing Hallucinations](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/reduce-hallucinations): Claude-specific techniques for factual grounding.
+- [Temperature Settings in LLMs](/blog/temperature-settings-in-llms-the-hidden-parameter-that-defines-your-ais-personality/): How temperature interacts with hallucination probability.

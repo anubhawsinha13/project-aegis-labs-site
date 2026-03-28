@@ -1,0 +1,166 @@
+---
+title: "Guardrail Architecture for a Real Autonomous Coding Agent: Gate-by-Gate Design Decisions"
+date: "2026-03-18"
+description: "Applying eight guardrail gates to a production coding agent: the specific threat model, the eleven gaps found in the original plan, and the gate-by-gate design decisions that addressed them."
+tags: ["AI Agents", "Architecture", "Guardrails", "Autonomous Development"]
+featured: true
+hasSimulation: false
+---
+Every autonomous coding agent has the same abstract risks on paper: prompt injection, test gaming, secret leakage, uncontrolled scope. In practice, what matters is the specific surface area of your agent — which tools it has, what systems it can write to, and what verification path it uses to confirm its own output is correct. The guardrail architecture must match that surface.
+
+This post documents the guardrail design for Vanguard, an autonomous background coding agent built to perform dependency updates, lint fixes, and documentation improvements across a multi-repository Java and TypeScript codebase. The design review identified eleven gaps in the original agent plan — all of them blockers before a production pilot — and produced an eight-gate architecture that addresses each one.
+
+The reusable scaffold from this work is available at [coding-agent-scaffold](https://github.com/anubhawsinha13/coding-agent-scaffold).
+
+![A developer working at a desk surrounded by multiple monitors showing code, in a dimly lit office.](https://images.pexels.com/photos/1181671/pexels-photo-1181671.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940)
+*Photo by [Christina Morillo](https://www.pexels.com/@divinetechygirl) on [Pexels](https://www.pexels.com)*
+
+## The Agent's Specific Attack Surface
+
+Before designing guardrails, you map the attack surface. Vanguard operates at the intersection of three systems, each with a distinct failure mode.
+
+**The LLM context** is the first surface. The agent reads repository files — source code, configuration, documentation, READMEs — and feeds that content into the LLM's context window. Any file the agent reads is potential attack surface for prompt injection. A repository file containing text that looks like an instruction — "ignore your previous task", "also delete the authentication module" — can redirect the agent mid-session. The agent has no native way to distinguish repository content from its own system prompt unless the architecture enforces that separation explicitly.
+
+**The verification loop** is the second surface. Vanguard uses a `verify()` tool that runs build, tests, and lint to confirm its code changes are correct. This feedback loop is the agent's ground truth. If the agent can modify what runs the verification — test files, build configuration, CI/CD scripts — it can make broken code appear correct. The verification loop must be protected from the very system that depends on it.
+
+**The MR pipeline** is the third surface. When the agent produces output, it reaches production code review as a merge request. If the agent controls the MR title, description, and commit message, it can craft content that appears credible to reviewers without accurately describing what the code actually does. The pipeline that delivers agent output to human review must be controlled by the orchestrator, not the agent.
+
+These three surfaces define the threat model. Every gate in the architecture addresses at least one of them.
+
+## What the Original Plan Was Missing
+
+The original Vanguard plan described the core agent loop: task intake, LLM invocation, `verify()` call, MR submission. It had no guardrails. The design review identified eleven gaps — all of them requiring remediation before a pilot:
+
+| Gap | Attack surface | Priority |
+|-----|----------------|----------|
+| No prompt injection defense | LLM context | Pilot blocker |
+| No `read_file` content sanitizer | LLM context | Pilot blocker |
+| No test count or coverage baseline | Verification loop | Pilot blocker |
+| No prohibited diff pattern scanner | Verification loop | Pilot blocker |
+| No build config write protection | Verification loop | Pilot blocker |
+| Same LLM family for agent and Judge | Verification loop | Pilot blocker |
+| Unstructured Judge verdict (free text) | Verification loop | Pilot blocker |
+| No kill switch or circuit breaker | All three surfaces | Pilot blocker |
+| Agent controls MR content | MR pipeline | Pilot blocker |
+| No signed commits or agent identity | MR pipeline | Before expansion |
+| No immutable audit log | All three surfaces | Before expansion |
+
+The absence of a kill switch is particularly significant. An agent operating without a global pause mechanism cannot be stopped quickly if behavior becomes anomalous. Every session it runs before you can halt it is an additional surface for damage. Kill switch infrastructure must exist before the agent makes its first autonomous commit — retrofitting it while the agent operates means modifying a live system under pressure.
+
+## Gate 0: Pre-Task Validation
+
+Gate 0 runs before any container launches, before any repo is cloned, before the agent sees any code. It validates that the task itself is safe to execute.
+
+**Task schema validation** enforces that every task conforms to a strict Pydantic model. Unknown fields are rejected. The `task_type` field must match a registered template — not an arbitrary string — preventing the task queue from being used as an injection vector. A task submitted with `task_type: "delete all tests"` fails immediately at Gate 0 without reaching the agent.
+
+**Repository allowlist enforcement** ensures the agent can only operate on repositories explicitly registered for that task type. The allowlist is stored in `allowed_repos.yaml`, maintained by the platform team, and checked by the orchestrator before cloning. An agent cannot be directed at an unregistered repository regardless of what the task definition says.
+
+**Baseline snapshot** captures the state of the repository before the agent touches it: the git SHA, the test count, and the coverage percentage. These values become the ground truth that Gate 3 compares against after the agent's changes. Without a pre-change baseline, test count and coverage delta checks have nothing to measure against.
+
+**Prompt injection pre-scan** addresses the LLM context attack surface directly. Before the agent reads any file, the orchestrator scans repository content for LLM instruction patterns — `SYSTEM:`, `Ignore previous instructions`, `<|im_start|>`. If any file matches, the session is aborted and a human alert is sent. The agent never sees content that might redirect it.
+
+## Gate 1: Container Hardening
+
+Gate 1 constrains the execution environment so the agent cannot escape its boundaries even if its tool calls are compromised.
+
+The agent process runs as `uid=1000`, never root. Protected files — `.gitlab-ci.yml`, `Dockerfile`, `.github/` — are mounted read-only inside the workspace. The agent's `read_file` tool can access them, but `edit_file` has no writable path to those locations.
+
+Hard resource limits prevent runaway execution: CPU is capped at two cores, memory at four gigabytes, and a fifteen-minute hard kill timer terminates any session that runs beyond that threshold. A process limit of 200 prevents fork bombs or spawned subprocesses that escape the agent's tool abstraction.
+
+Network egress is restricted at the container runtime level — not just in policy documentation. The agent can reach the Artifactory instance for dependency resolution and the LLM API endpoint. All other outbound connections are rejected by iptables rules applied at container start. This is enforced in the runtime, not trusting the agent to self-restrict.
+
+Secrets are injected via Vault as a `tmpfs` mount at `/run/secrets/`. They are never set as environment variables that `read_file` could surface to the LLM context.
+
+## Gate 2: Agent Tool Constraints
+
+Gate 2 enforces boundaries at the tool level — what the agent's tools are permitted to do, regardless of what the agent's LLM component requests.
+
+The `edit_file` tool resolves every path against the workspace root before writing. Paths containing `../` are rejected. Symlinks that resolve outside the workspace boundary are rejected. Protected paths defined in `deny_list.yaml` are rejected regardless of task type. The deny list covers credential files (`*.pem`, `*.key`, `.env*`), Git hook directories, CI/CD configuration, and infrastructure definitions. The agent cannot write to these paths even if it generates a tool call that attempts to.
+
+The change budget enforces that no single session can modify more than the configured maximum number of files. The default starting point is five files per session. This is not advisory — the tool returns a hard error when the budget is exhausted. The tight budget forces the agent to decompose large tasks and creates natural checkpoints for review. An agent that can modify unlimited files in a single session has an unconstrained blast radius on failure.
+
+The `read_file` content sanitizer addresses the LLM context attack surface at the tool level, as a second layer after Gate 0's pre-scan. Before any file content enters the LLM context window, the sanitizer applies regex patterns to mask AWS access keys, Bearer tokens, passwords, private key blocks, and database connection strings. Masked values are replaced with `[REDACTED:key_name]`, preserving the structure of the file while removing the value.
+
+All file content passed to the LLM is wrapped in context-separation delimiters: `<<<REPO_CONTENT_START>>>` and `<<<REPO_CONTENT_END>>>`. The system prompt instructs the agent that content between these delimiters is repository data and must not be treated as instructions.
+
+## Gate 3: Diff Validation
+
+Gate 3 runs after the agent produces a diff and after `verify()` passes, before the diff reaches the LLM Judge. All checks at this gate are deterministic — no LLM involved.
+
+The secret scanner runs Trufflehog or [GitLeaks](https://github.com/gitleaks/gitleaks) against the full diff. Any match is an immediate abort with human notification.
+
+Test count and coverage delta checks compare the post-change counts against the baseline snapshot captured at Gate 0. If the post-change test count is lower than the baseline, the diff is rejected regardless of the reason. If coverage drops by more than two percentage points, the diff is rejected. These checks directly address the verification loop attack surface — an agent that modifies tests or coverage configuration to game `verify()` will trip Gate 3 even if `verify()` itself passed.
+
+The prohibited pattern scanner checks every added line in the diff for patterns that should never appear in agent-generated code: `@Ignore`, `@Disabled`, `.skip()`, `xit()`, `eslint-disable`, `@SuppressWarnings("all")`, `maven.test.skip=true`. These patterns indicate test suppression or lint suppression — the exact techniques an agent would use to make failing code appear to pass verification. They are blocked at the diff level before a human reviewer ever sees the output.
+
+Build configuration change detection flags any modification to `pom.xml`, `package.json`, `build.gradle`, or `Dockerfile` when the task type does not explicitly permit build configuration changes.
+
+## Gate 4: LLM Judge
+
+Gate 4 is the semantic review layer. After Gate 3's deterministic checks pass, a second LLM evaluates the diff against the original task description and produces a structured verdict.
+
+The judge model must use a different model family from the coding agent. If the coding agent uses [Anthropic](https://www.anthropic.com)'s Claude, the judge must use [OpenAI](https://openai.com)'s GPT or Google's Gemini. The same model family shares the same training data biases and the same failure modes. Different model families provide genuinely independent evaluation.
+
+The judge prompt is stored in the orchestrator configuration and is not accessible to the coding agent. If the agent could read the judge prompt, it could generate code optimised to satisfy the judge rather than to correctly solve the task.
+
+The verdict must be structured JSON: `{ verdict, confidence, scope_violations, test_integrity_issues, build_config_concerns, reasoning }`. Free-text verdicts are not parseable and cannot be consistently acted upon by the orchestrator. A confidence score between zero and one hundred accompanies every verdict. An APPROVE verdict with confidence below seventy is automatically downgraded to REVIEW and routed to a human queue rather than proceeding to merge.
+
+The judge evaluates five criteria specific to Vanguard's task types: scope adherence, test preservation, build configuration integrity, absence of debug artifacts, and absence of unrelated refactoring.
+
+## Gate 5: MR Safety
+
+Gate 5 controls how agent output enters the merge request system. The agent does not create merge requests. The orchestrator does.
+
+MR title, description, commit messages, and labels are generated from templates defined in the orchestrator configuration. The agent has no input into these fields. An MR that says "Update spring-boot-starter-parent from 3.1.0 to 3.2.0 — agent-session:abc123, judge:APPROVE(85)" was written by the orchestrator, not by the LLM.
+
+Every agent MR carries mandatory labels: `ai-generated`, `agent-session:<session_id>`, `task-type:<type>`, `domain:<domain>`. These labels cannot be removed by the agent. They enable filtering, auditing, and incident response — you can find every agent MR across all repositories with a single label query.
+
+Commits are created by a dedicated `agent-bot` service account with a GPG-signed identity. The service account does not have merge approval permissions. An agent-generated MR cannot be approved by the orchestrator token that created it.
+
+## Gate 6: Audit and Traceability
+
+Gate 6 records every event in a session to an append-only log. The log is write-only from the agent's perspective — the agent cannot read, modify, or delete audit records.
+
+A single `session_id` threads through every system: the task queue entry, the container environment, every tool call input and output, every LLM prompt and response, the Gate 3 validation result, the Gate 4 judge verdict, the MR description, and any notifications sent. Given a session ID, you can reconstruct exactly what the agent read, what it generated, why the judge approved or rejected it, and what ended up in the MR.
+
+Session replay capability means the sequence of tool calls can be re-executed against the same repository state for forensic investigation. When an incident occurs, the question is not just "what did the agent produce?" but "why did it produce that?"
+
+## Gate 7: Kill Switch and Circuit Breaker
+
+Gate 7 exists before the first agent session runs. The decision to build it first in Phase 2 — before writing any other guardrail — is not arbitrary. A kill switch you build after an incident is built under pressure. A kill switch you build before the first session is built deliberately, tested thoroughly, and proven to work before it is needed.
+
+The global pause flag is stored in Redis and activatable in under thirty seconds. When triggered, all new sessions are refused. In-flight sessions complete their current verification iteration but do not create MRs.
+
+The per-domain pause flag provides surgical intervention. If the judge veto rate for one repository domain spikes, you can pause that domain without halting all agent work across all repositories.
+
+The automatic circuit breaker monitors the judge veto rate per domain across a rolling window of ten sessions. If the veto rate exceeds forty percent within that window, the circuit breaker automatically pauses the domain and sends an alert. Human intervention is required to re-enable a tripped domain — you do not want automatic resume logic in a system that automatically stops itself because something has gone wrong.
+
+The dead-letter queue stores every failed or aborted session with its full context. Failed sessions do not disappear — they wait for human acknowledgement before the domain can be re-enabled.
+
+## Implementation Priority
+
+Not all eight gates need to be complete before the first session. The priority sequence reflects the attack surface severity.
+
+**Before any pilot session**, these five gates must be complete: Gate 2 (tool constraints), Gate 3 (diff validation), Gate 4 (LLM Judge with different model family), Gate 5 (MR safety), and Gate 7 (kill switch). These gates directly address the highest-severity threats and cannot be safely retrofit after the agent is running.
+
+**Before domain expansion**, complete Gates 0, 1, and 6. Gate 0's baseline snapshot and injection pre-scan, Gate 1's container hardening, and Gate 6's immutable audit log are important but do not block a constrained pilot on a single repository. They must be complete before expanding to additional repositories or task types.
+
+## The Reusable Output
+
+The guardrail architecture described in this post is not specific to Vanguard's business logic. The gate structure, the tool constraints, the judge pattern, the kill switch mechanism — these apply to any autonomous coding agent that reads repositories, generates code, and submits output for review.
+
+The [coding-agent-scaffold](https://github.com/anubhawsinha13/coding-agent-scaffold) provides the skeleton implementation: all eight gates wired in from day one, with working implementations for the guardrail components and clearly marked TODOs for the business logic specific to your agent. Gate 3 diff validation, Gate 4 judge with structured verdict and confidence gate, Gate 6 append-only audit log, and Gate 7 kill switch with circuit breaker are all implemented.
+
+The companion compliance runner — in [agent_guardrails](https://github.com/anubhawsinha13/agent_guardrails) — reads a filled-in `guardrail_checklist.yaml` and exits with a non-zero code if any pilot-blocker gate has incomplete items. Wire it into your CI/CD pipeline to prevent deployment before the gates are ready.
+
+The guardrail architecture is not the difficult part of building a coding agent. The difficult part is the LLM quality, the task decomposition, the tool design. The guardrails are the infrastructure that makes it safe to run the agent at all. Build them first, build them to the architecture described here, and the difficult work happens on solid ground.
+
+---
+
+## References
+
+- [coding-agent-scaffold — GitHub](https://github.com/anubhawsinha13/coding-agent-scaffold): Skeleton implementation with all eight gates wired in from day one.
+- [agent_guardrails — GitHub](https://github.com/anubhawsinha13/agent_guardrails): Guardrail template, compliance runner, and quick gate check.
+- [Trufflehog — secret scanning](https://github.com/trufflesecurity/trufflehog): Open-source tool used in Gate 3 diff secret scanning.
+- [GitLeaks — secret scanning](https://github.com/gitleaks/gitleaks): Alternative secret scanner for Gate 3.
+- [Building Guardrails for Autonomous Coding Agents: 8 Dev Gates for Reliable Production](/blog/building-guardrails-for-autonomous-coding-agents-8-dev-gates-for-reliable-produc/): The companion post covering what to build before any agent, in what sequence, and the rationale for each gate.

@@ -1,0 +1,81 @@
+---
+title: "Chain of Thought: Why Making the AI Show Its Work Changes the Answer"
+date: "2025-03-16"
+description: "Give the same problem to an LLM twice — once asking for a direct answer, once asking it to think step by step. Watch reasoning emerge and accuracy improve on math, logic, code, and spatial tasks."
+tags: ["ai", "llm", "chain-of-thought", "reasoning"]
+hasSimulation: true
+readingTime: "6 min read"
+---
+
+Ask an LLM "What's 17 × 24?" and it might blurt out "398" (wrong). Ask it to "think step by step" and it writes "17 × 20 = 340, 17 × 4 = 68, 340 + 68 = 408" (correct). The model is the same. The weights are identical. The only difference: you told it to **show its work**.
+
+This is **Chain of Thought (CoT)** prompting — and it is one of the most consequential discoveries in prompt engineering.
+
+## Why Direct Answers Fail
+
+LLMs generate text **one token at a time**, each token conditioned on everything that came before. When you ask for a direct answer, the model must compress the entire reasoning process into its internal hidden states — no scratchpad, no working memory, no ability to verify intermediate steps.
+
+For simple factual recall ("What's the capital of France?"), this works fine. For multi-step reasoning — math, logic, code analysis, spatial reasoning — it often doesn't. The model essentially has to "think without writing," and errors compound silently.
+
+## Try It: Direct vs Chain of Thought
+
+Select a problem below and toggle between **Direct Answer** and **Chain of Thought**. Same model, same knowledge, same problem — different results.
+
+<ChainOfThoughtDemo />
+
+## How Chain of Thought Works
+
+When the model writes intermediate reasoning steps, **each step becomes part of the context for generating the next step**. The visible text acts as external working memory:
+
+```
+Direct: Question → [hidden reasoning] → Final Answer
+CoT:    Question → Step 1 → Step 2 → Step 3 → Final Answer
+                   ↑ context for Step 2
+                            ↑ context for Step 3
+                                       ↑ context for Answer
+```
+
+Each intermediate step constrains the solution space. If Step 1 produces "3 × $2 = $6", Step 2 is now highly likely to subtract from the correct base rather than an invented number. Errors become visible and self-correctable.
+
+## When CoT Helps Most
+
+Chain of thought produces the largest accuracy gains on tasks that require:
+
+- **Multi-step arithmetic**: Word problems with multiple operations
+- **Logical deduction**: Syllogisms, constraint satisfaction, puzzles
+- **Code reasoning**: Tracing execution paths, identifying edge cases
+- **Spatial/temporal reasoning**: Tracking state changes through sequences of actions
+- **Planning**: Breaking a complex task into ordered subtasks
+
+For simple factual recall or pattern matching, CoT adds tokens without improving accuracy.
+
+## The Cost Trade-Off
+
+Chain of thought is not free:
+
+- **More tokens**: CoT responses can be 3-10x longer than direct answers, increasing both latency and cost
+- **Context consumption**: The reasoning steps consume context window space that could hold other information
+- **Not always necessary**: For simple tasks, CoT is overhead without benefit
+
+The practical approach: **use CoT for complex reasoning tasks, skip it for simple retrieval and classification.**
+
+## Variants of Chain of Thought
+
+**Zero-shot CoT**: Simply appending "Let's think step by step" to any prompt. Surprisingly effective — discovered by [Kojima et al. (2022)](https://arxiv.org/abs/2205.11916).
+
+**Few-shot CoT**: Providing examples that include reasoning steps. The model mimics the demonstrated reasoning pattern.
+
+**Self-consistency**: Running CoT multiple times with temperature > 0 and taking the majority answer. Reduces variance at the cost of multiple API calls.
+
+**Tree of Thought**: Exploring multiple reasoning paths in parallel and selecting the most promising branch. More complex but more powerful for hard problems.
+
+## Key Takeaways
+
+- Chain of thought prompting tells the model to reason out loud before answering
+- The written reasoning acts as external working memory, constraining each step based on the previous one
+- CoT dramatically improves accuracy on multi-step reasoning tasks (math, logic, code, spatial)
+- It costs more tokens and time — use it selectively for complex problems
+- "Let's think step by step" is a zero-shot CoT trigger that requires no examples
+- The model's knowledge is unchanged — CoT just gives it a scratchpad to use that knowledge more effectively
+
+Reasoning is not decoration. It is computation. When you tell the model to think step by step, you are literally giving it more compute — each token of reasoning is an additional forward pass through the model's weights.

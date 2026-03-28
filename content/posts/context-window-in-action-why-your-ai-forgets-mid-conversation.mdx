@@ -1,0 +1,72 @@
+---
+title: "Context Window in Action: Why Your AI Forgets Mid-Conversation"
+date: "2025-03-16"
+description: "Watch a conversation overflow the context window in real time. See messages fade as they get pushed out, and discover why your AI 'forgets' your name after a long chat."
+tags: ["ai", "llm", "context-window", "memory"]
+hasSimulation: true
+readingTime: "6 min read"
+---
+
+You tell an AI your name in message one. Thirty messages later, you ask "what's my name?" and it has no idea. The model isn't broken. It isn't forgetful. It literally never received that message.
+
+This is the **context window** — and misunderstanding it is the most common source of confusion when working with LLMs.
+
+## The Illusion of Memory
+
+LLMs have no persistent memory. Every API call sends the **entire conversation history** from scratch. What looks like a flowing conversation is actually a series of independent requests, each containing the full chat log.
+
+```
+Request 1: [system] + [user msg 1]
+Request 2: [system] + [user msg 1] + [assistant msg 1] + [user msg 2]
+Request 3: [system] + [user msg 1] + [assistant msg 1] + [user msg 2] + [assistant msg 2] + [user msg 3]
+...
+```
+
+Each request grows larger. Eventually, it exceeds the model's context window — its maximum input size. When that happens, **something has to go**.
+
+## Watch It Happen
+
+The demo below simulates a conversation with a simplified context window. Add messages one by one and watch the token meter fill. When it overflows, the oldest messages fade — the model can no longer see them.
+
+<ContextWindowDemo />
+
+## What Gets Lost
+
+When the context window overflows, frameworks typically truncate from the beginning — the oldest messages are dropped first. This means:
+
+- **Early instructions vanish**: "Always respond in JSON" from message 1 disappears after enough turns
+- **Names and context evaporate**: "My name is Alex" in the first message is gone by message 15
+- **Constraints weaken**: Safety rules in the system prompt can be pushed out if the conversation grows long enough
+- **The model doesn't know what it lost**: There is no "I forgot" signal — the model simply responds based on whatever context it still has
+
+## Real-World Context Window Sizes
+
+Different models offer different window sizes, measured in tokens:
+
+- **GPT-3.5**: ~4,096 tokens (roughly 3,000 words)
+- **GPT-4**: 8,192 or 128,000 tokens depending on variant
+- **Claude**: up to 200,000 tokens
+- **Gemini**: up to 1,000,000 tokens
+
+Larger windows help but don't eliminate the problem. A million-token window can still overflow in document-heavy workflows. And larger contexts have their own challenge: **attention degradation** — models tend to pay less attention to information in the middle of very long contexts (the "lost in the middle" phenomenon).
+
+## Strategies for Managing Context
+
+**Summarisation**: Periodically summarise older messages and replace them with a compact summary, preserving key facts while reducing token count.
+
+**Sliding window with pinning**: Keep the system prompt and most recent N messages, but "pin" critical messages (like user preferences or task instructions) so they are never truncated.
+
+**RAG (Retrieval-Augmented Generation)**: Store conversation history in a vector database. On each turn, retrieve only the most relevant past messages rather than sending everything.
+
+**Explicit state management**: Extract key facts (user name, preferences, task context) into a structured state object that gets injected into every request, independent of chat history.
+
+## Key Takeaways
+
+- LLMs have no memory — every request resends the full conversation
+- The context window is a hard limit on input size, measured in tokens
+- When overflowed, oldest messages are silently dropped — the model doesn't know they existed
+- Early instructions, names, and constraints are the first casualties
+- Mitigation strategies include summarisation, message pinning, RAG, and explicit state extraction
+- Larger context windows help but introduce attention degradation in the middle of long inputs
+
+The next time an AI "forgets" something you told it, it didn't forget. That message was never sent.
