@@ -71,9 +71,24 @@ jobs:
           server-dir: aegis-labs.pro/public_html/
           protocol: ftps
           port: 21
-          # false: avoid wiping public_html before upload finishes (prevents HTML pointing at missing _next chunks).
+          # Fresh state name forces a full file pass if the old sync state was wrong (skipped _next chunks).
+          state-name: .ftp-sync-aegis-site.json
           dangerous-clean-slate: false
           exclude: |
             **/.git*
             **/.git*/**
             **/node_modules/**
+
+      - name: Smoke test (homepage CSS must load)
+        run: |
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            HTML=$(curl -fsSL --connect-timeout 10 "https://aegis-labs.pro/" || true)
+            CSS=$(echo "$HTML" | grep -oE 'href="/_next/static/chunks/[^"]+\.css"' | head -1 | sed 's/href="//;s/"//' || true)
+            if [ -z "$CSS" ]; then echo "Attempt $i: no CSS link yet"; sleep 15; continue; fi
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "https://aegis-labs.pro${CSS}")
+            echo "Attempt $i: ${CSS} -> HTTP $CODE"
+            if [ "$CODE" = "200" ]; then echo "OK"; exit 0; fi
+            sleep 15
+          done
+          echo "::error::Homepage CSS still not HTTP 200 after deploy"
+          exit 1
