@@ -20,7 +20,17 @@ wrangler secret put RETURN_URL_ORIGIN   # https://aegis-labs.pro  (no trailing s
 wrangler deploy
 ```
 
-3. Note the Worker URL, e.g. `https://aegis-stripe-checkout.your-subdomain.workers.dev`.
+3. Note the Worker URL printed after deploy. It always includes **your** account subdomain, e.g.  
+   `https://aegis-stripe-checkout.<your-subdomain>.workers.dev`  
+   (The Worker name in [`wrangler.toml`](wrangler.toml) is `aegis-stripe-checkout` — the URL is **not** `aegis-labs.workers.dev` unless you created a Worker with that exact name on that route.)
+
+**Sanity check before GitHub:** the URL must resolve:
+
+```bash
+curl -sI "https://YOUR_WORKER_URL" | head -3
+```
+
+You should see `HTTP/2 405` or `404` from the Worker (not `Could not resolve host`).
 
 ## 3. GitHub Actions (Aegis build)
 
