@@ -43,7 +43,14 @@ export default function EmbeddedStripeCheckout() {
             });
             if (!res.ok) {
               const text = await res.text();
-              throw new Error(text || `Checkout API error (${res.status})`);
+              let detail = text || `Checkout API error (${res.status})`;
+              try {
+                const j = JSON.parse(text) as { error?: string };
+                if (j.error) detail = j.error;
+              } catch {
+                /* use raw text */
+              }
+              throw new Error(detail);
             }
             const data = (await res.json()) as { clientSecret?: string };
             if (!data.clientSecret) {

@@ -9,16 +9,28 @@ Aegis Labs is a **static site** on SiteGround. Stripe’s **secret key** cannot 
 
 ## 2. Deploy the Worker (Cloudflare)
 
+GitHub secrets (`STRIPE_PUBLISHABLE_KEY`, `STRIPE_CHECKOUT_API_URL`) only affect the **static site build**. The Worker itself needs **separate** secrets on Cloudflare, or every checkout POST returns `500` and Stripe shows “Something went wrong”.
+
 1. Install [Wrangler](https://developers.cloudflare.com/workers/wrangler/install-and-update/) and log in.
 2. From this folder:
 
 ```bash
 cd stripe-checkout-worker
-wrangler secret put STRIPE_SECRET_KEY   # paste sk_test_... or sk_live_...
-wrangler secret put STRIPE_PRICE_ID     # paste price_...
-wrangler secret put RETURN_URL_ORIGIN   # https://aegis-labs.pro  (no trailing slash)
-wrangler deploy
+npx wrangler@3 secret put STRIPE_SECRET_KEY   # paste sk_test_... or sk_live_...
+npx wrangler@3 secret put STRIPE_PRICE_ID     # paste price_...
+npx wrangler@3 secret put RETURN_URL_ORIGIN   # https://aegis-labs.pro  (no trailing slash)
+npx wrangler@3 deploy
 ```
+
+**Verify the Worker (replace with your URL):**
+
+```bash
+curl -sS -X POST "https://aegis-stripe-checkout.YOUR_SUBDOMAIN.workers.dev" \
+  -H "Origin: https://aegis-labs.pro" -H "Content-Type: application/json" -d "{}"
+```
+
+- If you see `{"error":"Worker missing STRIPE_SECRET_KEY or STRIPE_PRICE_ID"}`, the Cloudflare secrets are still missing — run the three `secret put` commands again for **this** Worker.
+- Success looks like `{"clientSecret":"..."}` (long string).
 
 3. Note the Worker URL printed after deploy. It always includes **your** account subdomain, e.g.  
    `https://aegis-stripe-checkout.<your-subdomain>.workers.dev`  
