@@ -13,8 +13,19 @@ npm install && npm run dev
 ## Pay / Stripe
 
 - **`/pay/`** uses **Stripe Embedded Checkout** (checkout UI on your site).
-- Backend: **`stripe-checkout-worker/`** (Cloudflare Worker). See `stripe-checkout-worker/README.md`.
-- GitHub Actions needs secrets **`STRIPE_PUBLISHABLE_KEY`** and **`STRIPE_CHECKOUT_API_URL`** for production builds.
+- Backend: **`stripe-checkout-worker/`** (Cloudflare Worker). Deploy it first, then copy the Worker URL.
+- **Required GitHub secrets** (without these, `/pay/` stays broken and CI will fail the build on purpose):
+
+  | Secret | What to paste |
+  |--------|----------------|
+  | `STRIPE_PUBLISHABLE_KEY` | Stripe Dashboard → Developers → API keys → **Publishable** key (`pk_live_…` or `pk_test_…`) |
+  | `STRIPE_CHECKOUT_API_URL` | Full Worker URL after `wrangler deploy`, e.g. `https://aegis-stripe-checkout.xxx.workers.dev` (no trailing slash) |
+
+  From your machine (after `gh auth login`):  
+  `gh secret set STRIPE_PUBLISHABLE_KEY -R anubhawsinha13/project-aegis-labs-site`  
+  `gh secret set STRIPE_CHECKOUT_API_URL -R anubhawsinha13/project-aegis-labs-site`
+
+- Local dev: copy [`.env.example`](.env.example) to `.env.local` and run the Worker with `wrangler dev` (see `stripe-checkout-worker/README.md`).
 
 ## Deploy
 

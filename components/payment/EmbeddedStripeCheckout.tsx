@@ -21,7 +21,7 @@ export default function EmbeddedStripeCheckout() {
     if (!publishableKey || !sessionApiUrl) {
       setStatus("error");
       setMessage(
-        "Embedded checkout is not configured yet. Add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY and NEXT_PUBLIC_STRIPE_CHECKOUT_API_URL at build time, and deploy the small API in orionedge/stripe-checkout-worker/ (see README there)."
+        "Payments are not wired for this build. In GitHub: add repository secrets STRIPE_PUBLISHABLE_KEY (pk_…) and STRIPE_CHECKOUT_API_URL (your Cloudflare Worker URL), then redeploy. Deploy the checkout API from stripe-checkout-worker/ — see README.md there."
       );
       return;
     }

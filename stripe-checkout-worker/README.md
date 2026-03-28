@@ -13,7 +13,7 @@ Aegis Labs is a **static site** on SiteGround. Stripe’s **secret key** cannot 
 2. From this folder:
 
 ```bash
-cd orionedge/stripe-checkout-worker
+cd stripe-checkout-worker
 wrangler secret put STRIPE_SECRET_KEY   # paste sk_test_... or sk_live_...
 wrangler secret put STRIPE_PRICE_ID     # paste price_...
 wrangler secret put RETURN_URL_ORIGIN   # https://aegis-labs.pro  (no trailing slash)
@@ -42,7 +42,7 @@ Under **Settings → Checkout**, add your site if Stripe asks for allowed domain
 
 ## Local testing
 
-Run the Worker on `localhost` with Wrangler dev, set in `.env.local` in `orionedge/`:
+Run the Worker on `localhost` with Wrangler dev, set in `.env.local` in the **repo root** (see `../.env.example`):
 
 ```
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
