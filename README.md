@@ -30,3 +30,7 @@ npm install && npm run dev
 ## Deploy
 
 GitHub Actions **Build & Deploy Aegis Labs** (`.github/workflows/deploy.yml`) builds `out/` and publishes via FTP to SiteGround.
+
+### Site looks unstyled (no CSS)
+
+Usually the homepage references `/_next/static/chunks/*.css` but those files are missing on the server (HTML and `_next` got out of sync). The workflow uses **incremental FTP** (`dangerous-clean-slate: false`) so a new deploy adds files without deleting everything first. After a successful deploy, in **SiteGround → Speed → Caching** (or **SuperCacher**), **purge all caches** for `aegis-labs.pro`, then hard-refresh the browser.

@@ -48,6 +48,19 @@ jobs:
           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
           NEXT_PUBLIC_STRIPE_CHECKOUT_API_URL: ${{ secrets.STRIPE_CHECKOUT_API_URL }}
 
+      - name: Verify static export (HTML must match _next assets)
+        run: |
+          test -f out/index.html || (echo "::error::missing out/index.html" && exit 1)
+          N=$(find out/_next/static -type f 2>/dev/null | wc -l | tr -d ' ')
+          if [ "${N:-0}" -lt 10 ]; then
+            echo "::error::Expected many files under out/_next/static, found: $N"
+            exit 1
+          fi
+          CSS=$(grep -oE 'href="/_next/static/chunks/[^"]+\.css"' out/index.html | head -1 | sed 's/href="//;s/"//')
+          test -n "$CSS" || (echo "::error::No CSS chunk link in index.html" && exit 1)
+          test -f "out${CSS}" || (echo "::error::Linked CSS missing on disk: out${CSS}" && exit 1)
+          echo "OK: $N static files; primary CSS present (out${CSS})"
+
       - name: Deploy to SiteGround via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -58,7 +71,8 @@ jobs:
           server-dir: aegis-labs.pro/public_html/
           protocol: ftps
           port: 21
-          dangerous-clean-slate: true
+          # false: avoid wiping public_html before upload finishes (prevents HTML pointing at missing _next chunks).
+          dangerous-clean-slate: false
           exclude: |
             **/.git*
             **/.git*/**
