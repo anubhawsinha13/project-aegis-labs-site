@@ -33,4 +33,8 @@ GitHub Actions **Build & Deploy Aegis Labs** (`.github/workflows/deploy.yml`) bu
 
 ### Site looks unstyled (no CSS)
 
-Usually the homepage references `/_next/static/chunks/*.css` but those files are missing on the server (HTML and `_next` got out of sync). The workflow uses **incremental FTP** (`dangerous-clean-slate: false`) so a new deploy adds files without deleting everything first. After a successful deploy, in **SiteGround → Speed → Caching** (or **SuperCacher**), **purge all caches** for `aegis-labs.pro`, then hard-refresh the browser.
+Two common causes:
+
+1. **Stale HTML at the CDN** — the new `index.html` points at new hashed CSS files, but the edge still serves an **old** `index.html` that references **old** chunk names (those files may be gone), so every stylesheet 404s. Fix: **SiteGround → Speed → Caching / SuperCacher → purge everything** for `aegis-labs.pro`, then hard-refresh (Shift+reload).
+
+2. **FTP out of sync** — less common now that the workflow checks `out/` before upload. If purging cache does not help, open **Site Tools → Site → File Manager** and confirm `_next/static/chunks/` sits next to `index.html` and contains many `.js` / `.css` files.

@@ -71,24 +71,24 @@ jobs:
           server-dir: aegis-labs.pro/public_html/
           protocol: ftps
           port: 21
-          # Fresh state name forces a full file pass if the old sync state was wrong (skipped _next chunks).
+          timeout: 1200000
           state-name: .ftp-sync-aegis-site.json
           dangerous-clean-slate: false
+          log-level: verbose
+          security: loose
           exclude: |
-            **/.git*
-            **/.git*/**
             **/node_modules/**
 
-      - name: Smoke test (homepage CSS must load)
+      # Use out/index.html (this build), not the live URL — CDN often serves stale HTML that still links old chunk hashes.
+      - name: Smoke test (chunk from this build must load on origin)
         run: |
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            HTML=$(curl -fsSL --connect-timeout 10 "https://aegis-labs.pro/" || true)
-            CSS=$(echo "$HTML" | grep -oE 'href="/_next/static/chunks/[^"]+\.css"' | head -1 | sed 's/href="//;s/"//' || true)
-            if [ -z "$CSS" ]; then echo "Attempt $i: no CSS link yet"; sleep 15; continue; fi
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "https://aegis-labs.pro${CSS}")
+          CSS=$(grep -oE 'href="/_next/static/chunks/[^"]+\.css"' out/index.html | head -1 | sed 's/href="//;s/"//')
+          test -n "$CSS"
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 15 "https://aegis-labs.pro${CSS}")
             echo "Attempt $i: ${CSS} -> HTTP $CODE"
             if [ "$CODE" = "200" ]; then echo "OK"; exit 0; fi
-            sleep 15
+            sleep 10
           done
-          echo "::error::Homepage CSS still not HTTP 200 after deploy"
+          echo "::error::Deployed CSS chunk not HTTP 200 — check FTP path or purge SiteGround cache"
           exit 1
