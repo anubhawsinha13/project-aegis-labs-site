@@ -1,1 +1,9 @@
 DirectoryIndex index.html index.htm
+
+# Stale cached HTML still points at old /_next/static/chunks/* after deploy → unstyled site.
+# Tell browsers and SiteGround / CDN not to treat HTML as long-lived.
+<IfModule mod_headers.c>
+  <FilesMatch "^(index\.html|404\.html)$">
+    Header always set Cache-Control "max-age=0, must-revalidate"
+  </FilesMatch>
+</IfModule>
