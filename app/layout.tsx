@@ -7,6 +7,10 @@ export const metadata: Metadata = {
   title: { default: "Aegis Labs", template: "%s · Aegis Labs" },
   description: "AI strategy consulting for enterprises and small businesses.",
   metadataBase: new URL("https://aegis-labs.pro"),
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    apple: "/favicon.svg",
+  },
   openGraph: {
     siteName: "Aegis Labs",
     type: "website",

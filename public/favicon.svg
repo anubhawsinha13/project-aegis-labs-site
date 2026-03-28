@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Aegis Labs">
+  <title>Aegis Labs</title>
+  <!-- Rounded tile + shield (aegis)  reads clearly at 1632px -->
+  <rect width="32" height="32" rx="7" fill="#0f4c81"/>
+  <path
+    fill="#ffffff"
+    d="M16 5.2 8.5 8.6v7.4c0 4.9 3 9.4 7.5 11 4.5-1.6 7.5-6.1 7.5-11V8.6L16 5.2z"
+  />
+</svg>
