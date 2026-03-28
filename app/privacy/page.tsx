@@ -22,9 +22,11 @@ export default function PrivacyPage() {
         <section className="mb-8">
           <h2 className="text-base font-semibold text-[var(--fg)] mb-3">Data We Collect</h2>
           <p>
-            This website does not directly collect, store, or process any personal data. There are
-            no account registrations, newsletter sign-ups, or contact forms on this site that send
-            data to our servers.
+            This website does not run account registration or contact forms that post data to our
+            own servers. Optional newsletter requests are sent only when you choose{" "}
+            <strong className="text-[var(--fg)]">Subscribe by email</strong> on the{" "}
+            <a href="/pay/" style={{ color: "var(--accent)" }}>Book a consultation</a> page—your
+            email client sends a message to us the same way as a normal email.
           </p>
           <p className="mt-3">
             If you send us an email at{" "}
