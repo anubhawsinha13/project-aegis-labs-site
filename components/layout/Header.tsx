@@ -17,7 +17,7 @@ export default function Header() {
           <a href="/#services" className="text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors">Services</a>
           <a href="/#about" className="text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors">About</a>
           <a href="/blog/" className="text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors">Insights</a>
-          <a href="/#contact" className="text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors">Contact</a>
+          <a href="/contact/" className="text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors">Contact</a>
           <a
             href="/pay/"
             className="px-4 py-1.5 rounded-md text-white text-sm font-medium transition-opacity hover:opacity-90"
@@ -49,7 +49,7 @@ export default function Header() {
           <a href="/#services" className="text-[var(--fg-muted)] hover:text-[var(--fg)]" onClick={() => setMenuOpen(false)}>Services</a>
           <a href="/#about" className="text-[var(--fg-muted)] hover:text-[var(--fg)]" onClick={() => setMenuOpen(false)}>About</a>
           <a href="/blog/" className="text-[var(--fg-muted)] hover:text-[var(--fg)]" onClick={() => setMenuOpen(false)}>Insights</a>
-          <a href="/#contact" className="text-[var(--fg-muted)] hover:text-[var(--fg)]" onClick={() => setMenuOpen(false)}>Contact</a>
+          <a href="/contact/" className="text-[var(--fg-muted)] hover:text-[var(--fg)]" onClick={() => setMenuOpen(false)}>Contact</a>
           <a
             href="/pay/"
             className="px-4 py-2 rounded-md text-white text-sm font-medium text-center transition-opacity hover:opacity-90"
